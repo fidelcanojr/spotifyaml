@@ -86,19 +86,17 @@ class SpotifYAMLAgent:
         return new_resources
 
 def lambda_handler(event, context):
-    if 'token' in event:
-        token = event['token']
-    else:
-        token = fetch_token(event['queryStringParameters']['code'])
-    sp = spotipy.Spotify(auth=token)
-    user_id = sp.me()['id']
-    playlists = sp.user_playlists(user_id)
+    print(event)
+    project_contents = get_project_contents_form_event(event)
+    token = get_token_from_event(event)
+    spyaml = SpotifYAMLAgent(token, project_contents)
+    plan = spyaml.auto_import()
     return {
         "statusCode" : "200",
         "body" : json.dumps(
             {
                 "message": f"Run `export SPOTIFY_TOKEN={token}` to skip authentiaction on your next run!",
-                "plan": playlists
+                "plan": plan
             }
         )
     }
