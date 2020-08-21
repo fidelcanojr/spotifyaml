@@ -3,32 +3,54 @@ import requests
 import sys
 import os
 import webbrowser
+import json
+import yaml
 
 INVOKE_URL = "https://thor7h42bf.execute-api.us-east-2.amazonaws.com/prod"
 CLIENT_ID = "2567d513d77e46a4ab11701cdf4aa447"
 
+def run_on_browser():
+  endpoint = "https://accounts.spotify.com/authorize"
+  scope=[
+      "user-read-email",
+      "playlist-read-private",
+      "playlist-modify-public",
+      "playlist-modify-private"
+  ]
+  url = "{}?client_id={}&response_type=code&redirect_uri={}&scope={}".format(
+      endpoint,
+      CLIENT_ID,
+      f"{INVOKE_URL}/plan",
+      " ".join(scope)
+  )
+  webbrowser.open(url)
+
+def compile():
+  project_contents = {
+    'playlists': []
+  }
+  f = filter(lambda x: x.endswith(".yml") or x.endswith(".yaml"), os.listdir())
+  for filepath in f:
+    with open(filepath, "r") as file:
+      file_dict = yaml.safe_load(file)
+      project_contents['playlists'].extend(file_dict['playlists'])
+  return project_contents
+
 def plan():
+  project_contents = compile()
+  print(project_contents)
   if 'SPOTIFY_TOKEN' in os.environ:
-    payload = {"token": os.environ["SPOTIFY_TOKEN"]}
+    payload = {
+      "token": os.environ["SPOTIFY_TOKEN"],
+      "project_contents": json.dumps(project_contents)
+    }
     r = requests.post(f"{INVOKE_URL}/plan", data=payload)
-    print(r)
-  else:
-    endpoint = "https://accounts.spotify.com/authorize"
-    scope=[
-        "user-read-email",
-        "playlist-read-private",
-        "playlist-modify-public",
-        "playlist-modify-private"
-    ]
-    url = "{}?client_id={}&response_type=code&redirect_uri={}&scope={}".format(
-        endpoint,
-        CLIENT_ID,
-        f"{INVOKE_URL}/plan",
-        " ".join(scope)
-    )
-    webbrowser.open(url)
+    print(r.text)
+    if r.status_code == 200:
+      return r.json()
+  run_on_browser()
 
 if __name__ == "__main__":
   command = sys.argv[1]
   if command == "plan":
-    plan()
+    print(plan())
