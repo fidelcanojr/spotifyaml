@@ -1,7 +1,13 @@
 import spotipy
 import boto3
 import requests
+import re
 import json
+import urllib.parse
+
+SUPPORTED_RESOURCES = [
+    "playlists"
+]
 
 def fetch_token(code):
     secrets = boto3.client('secretsmanager')
@@ -20,6 +26,64 @@ def fetch_token(code):
         data = payload
     ).json()['access_token']
     return token
+
+def get_token_from_event(event):
+    body = event['body']
+    if body:
+        token_entry = next(
+            filter(
+                lambda x: x.startswith("token="),
+                body.split("&")
+            ), None
+        )
+        if token_entry:
+            return token_entry.replace("token=","")
+    code = event['queryStringParameters']['code']
+    return fetch_token(code)
+
+def get_project_contents_form_event(event):
+    body = event['body']
+    if body:
+        contents_entry = next(
+            filter(
+                lambda x: x.startswith("project_contents="),
+                body.split("&")
+            ), None
+        )
+        if contents_entry:
+            contents_entry = urllib.parse.unquote(
+                contents_entry.replace("project_contents=","").replace("+"," ")
+            ).encode('utf-8')
+            print(contents_entry)
+            return json.loads(contents_entry)
+    return {}
+
+class SpotifYAMLAgent:
+    def __init__(self,token, project_contents):
+        self.sp = spotipy.Spotify(auth=token)
+        self.user_id = self.sp.me()['id']
+        self.project_contents = project_contents
+
+    def auto_import(self):
+        new_resources = {}
+        user_resources = {
+            "playlists": list(map(
+                lambda x: x['name'],
+                self.sp.user_playlists(self.user_id)['items']
+            ))
+        }
+        for resource in SUPPORTED_RESOURCES:
+            project_specific_resources = self.project_contents.get(resource,[])
+            user_specific_resources = user_resources[resource]
+            to_create = list(filter(
+                lambda x: x not in user_specific_resources,
+                map(
+                    lambda y: list(y.keys())[0],
+                    project_specific_resources
+                )
+            ))
+            new_resources[resource] = to_create
+        return new_resources
 
 def lambda_handler(event, context):
     if 'token' in event:
